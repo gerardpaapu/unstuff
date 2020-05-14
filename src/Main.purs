@@ -5,9 +5,8 @@ import Prelude
 import Cheerio (attr, find)
 import Cheerio as Cheerio
 import Cheerio.Static (load, loadRoot, select)
-import Control.Monad.Except (class MonadError, throwError)
-import Control.Parallel (parOneOfMap)
-import Data.Array (catMaybes, concatMap, filter, (!!))
+import Control.Monad.Except (class MonadError)
+import Data.Array (catMaybes, filter)
 import Data.Array as Array
 import Data.Either (Either(..), either)
 import Data.Foldable (foldMap)
@@ -24,8 +23,7 @@ import Effect.Ref as Ref
 import Foreign.Object (singleton, Object)
 import Node.Encoding (Encoding(..))
 import Node.HTTP.Client (RequestHeaders(..), RequestOptions, headers, hostname, method, path, port, protocol, request, requestAsStream, responseAsStream)
-import Node.Process (argv)
-import Node.Stream (Read, Stream, end, setEncoding, Readable)
+import Node.Stream (Read, Readable, Stream, end)
 import Node.Stream as S
 import Simple.JSON (readJSON)
 
@@ -68,13 +66,18 @@ readToEnd enc stream = makeAff go
     
 getFeedUrlAtEndpoint :: String -> Aff String
 getFeedUrlAtEndpoint endpoint = do
+  log $  "Fetching the quizzes page from: " <> endpoint
   stream <- requestStream (options endpoint)
   html <- readToEnd UTF8 stream
+  
   quizUrl <- html # readFeedUrlFromHtml # maybe mempty pure
   quizPage <- requestStream (options quizUrl) >>= readToEnd UTF8
+  log $  "Fetching todays quiz page from: " <> quizUrl
+  
   tag <- findTheScriptTag' quizPage
   let assets = tag.news
                # foldMap (_.news.display_assets)
+               -- TODO: this is all a bit yuck
                # catMaybes <<< map (\o -> do
                                e <- o.embedCode
                                pure e.embed)
@@ -82,6 +85,8 @@ getFeedUrlAtEndpoint endpoint = do
                # Array.head
                # map decodeHTML
                >>= findTheIframeSrc
+
+  log $ "We found the goddamn iframe"
                
   case assets of
     Just s -> pure s

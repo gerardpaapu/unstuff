@@ -7,12 +7,17 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "spago run"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "cheerio": "^1.0.0-rc.3",
     "he": "^1.2.0"
+  },
+  "devDependencies": {
+    "purescript": "^0.13.6",
+    "spago": "^0.15.2"
   }
 }
