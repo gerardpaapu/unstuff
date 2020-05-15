@@ -1,7 +1,6 @@
 module Main where
 
 import Prelude
-
 import Control.Monad.Except (class MonadError)
 import Control.Promise (Promise)
 import Control.Promise as Promise
@@ -24,56 +23,59 @@ import Simple.JSON (readJSON)
 import Unstuff.Html as Html
 import Unstuff.Http as Http
 
-type Payload =
-  { statusCode :: Number
-  , body :: String
-  }
-  
+type Payload
+  = { statusCode :: Number
+    , body :: String
+    }
+
 handler :: Effect (Promise Payload)
-handler = Promise.fromAff $ do
-  url <- getFeedUrl
-  pure { statusCode: 200.0
-       , body: url }
-  
+handler =
+  Promise.fromAff
+    $ do
+        url <- getFeedUrl
+        pure
+          { statusCode: 200.0
+          , body: url
+          }
+
 main :: Effect Unit
 main = do
   launchAff_ do
     url <- getFeedUrl
     log url
 
-
 log :: String -> Aff Unit
 log = liftEffect <<< Console.log
 
-getFeedUrl ::  Aff String
-getFeedUrl =
-  getFeedUrlAtEndpoint "/national/quizzes"
-
+getFeedUrl :: Aff String
+getFeedUrl = getFeedUrlAtEndpoint "/national/quizzes"
 
 getFeedUrlAtEndpoint :: String -> Aff String
 getFeedUrlAtEndpoint endpoint = do
-  log $  "Fetching the quizzes page from: " <> endpoint
+  log $ "Fetching the quizzes page from: " <> endpoint
   html <- Http.getString endpoint
   quizUrl <- html # readFeedUrlFromHtml # maybe (throwError (error "fuck")) pure
   quizPage <- Http.getString quizUrl
-  log $  "Fetching todays quiz page from: " <> quizUrl
-  
+  log $ "Fetching todays quiz page from: " <> quizUrl
   tag <- findTheScriptTag' quizPage
-  let assets = tag.news
-               # foldMap (_.news.display_assets)
-               # catMaybes <<< map (\o -> do
-                               e <- o.embedCode
-                               pure e.embed)
-               # Array.filter (String.contains (Pattern "riddle"))
-               # Array.head
-               # map decodeHTML
-  let iframeSrc = assets >>= findTheIframeSrc
-  case iframeSrc of
+  case urlFromBlob tag of
     Just s -> pure s
     Nothing -> throwError (error "shit")
 
+urlFromBlob :: StuffBlob -> Maybe String
+urlFromBlob tag =
+    tag.news
+    # foldMap (_.news.display_assets)
+    # map (_.embedCode)
+    # catMaybes
+    # map (_.embed)
+    # Array.filter (String.contains (Pattern "riddle"))
+    # Array.head
+    >>= findTheIframeSrc
+
 findTheIframeSrc :: String -> Maybe String
-findTheIframeSrc html = do
+findTheIframeSrc str = do
+  let html = decodeHTML str
   dom <- hush $ H.parseTags html
   tag <- dom # List.find (Html.match' "<iframe>")
   Html.getAttr "src" tag
@@ -81,22 +83,20 @@ findTheIframeSrc html = do
 readFeedUrlFromHtml :: String -> Maybe String
 readFeedUrlFromHtml html = do
   dom <- H.parseTags html # hush
-  d <- dom
-    # List.dropWhile (not <<< Html.match' "<li class=\"story-list__item js-adfliction__target--all\">")
-    # List.dropWhile (not <<< Html.match' "<a>")
-    # List.head
-
+  d <-
+    dom
+      # List.dropWhile (not <<< Html.match' "<li class=\"story-list__item js-adfliction__target--all\">")
+      # List.dropWhile (not <<< Html.match' "<a>")
+      # List.head
   Html.getAttr "href" d
 
 foreign import decodeHTML :: String -> String
-                      
-findTheScriptTag' :: forall m. MonadError Error m => String -> m StuffBlob
-findTheScriptTag' s =
-  case (findTheScript s) of
-    Just v -> pure v
-    Nothing -> throwError (error "Can't find the gd tag")
 
-  
+findTheScriptTag' :: forall m. MonadError Error m => String -> m StuffBlob
+findTheScriptTag' s = case (findTheScript s) of
+  Just v -> pure v
+  Nothing -> throwError (error "Can't find the gd tag")
+
 findTheScript :: String -> Maybe StuffBlob
 findTheScript src = do
   html <- hush $ H.parseTags src
@@ -105,18 +105,22 @@ findTheScript src = do
   obj <- hush $ readJSON json
   pure obj
   where
-    takeState = case _ of
-      H.TScript _ s ->
-        s
+  takeState = case _ of
+    H.TScript _ s ->
+      s
         # String.trim
         # String.stripPrefix (Pattern "window.__INITIAL_STATE__ = ")
-      _ -> Nothing
-  
-read :: forall m. Monoid (m StuffBlob) =>  Applicative m => String -> m StuffBlob
-read s = either (\_ -> mempty) pure do
+    _ -> Nothing
+
+read :: forall m. Monoid (m StuffBlob) => Applicative m => String -> m StuffBlob
+read s =
+  either (\_ -> mempty) pure do
     json :: String <- readJSON s
     blob :: StuffBlob <- readJSON json
     pure blob
 
-type StuffItem = { news :: { display_assets :: Array { embedCode :: Maybe { embed :: String } } } }
-type StuffBlob = { news :: Object StuffItem}
+type StuffItem
+  = { news :: { display_assets :: Array { embedCode :: Maybe { embed :: String } } } }
+
+type StuffBlob
+  = { news :: Object StuffItem }
