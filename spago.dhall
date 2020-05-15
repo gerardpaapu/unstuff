@@ -5,9 +5,10 @@ You can edit this file as you like.
 { name = "my-project"
 , dependencies =
   [ "aff"
-  , "cheerio"
+  , "aff-promise"
   , "console"
   , "effect"
+  , "lenient-html-parser"
   , "node-http"
   , "node-process"
   , "node-streams"
