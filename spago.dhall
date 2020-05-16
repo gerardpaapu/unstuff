@@ -8,6 +8,7 @@ You can edit this file as you like.
   , "aff-promise"
   , "console"
   , "effect"
+  , "filterable"
   , "lenient-html-parser"
   , "node-http"
   , "node-process"

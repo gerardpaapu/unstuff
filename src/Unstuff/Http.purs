@@ -3,6 +3,7 @@ module Unstuff.Http where
 import Prelude
 
 import Data.Either (Either(..))
+import Data.Newtype (class Newtype)
 import Data.Options (Options, (:=))
 import Effect.Aff (Aff, Canceler(..), makeAff)
 import Effect.Ref as Ref
@@ -11,6 +12,9 @@ import Node.Encoding (Encoding(..))
 import Node.HTTP.Client (RequestHeaders(..), RequestOptions, headers, hostname, method, path, port, protocol, request, requestAsStream, responseAsStream)
 import Node.Stream (Read, Readable, Stream, end)
 import Node.Stream as S
+
+newtype Html = Html String
+derive instance newtypeHTML :: Newtype Html _
 
 mobileSafari :: String
 mobileSafari = "Mozilla/5.0 (iPad; CPU OS 13_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/81.0.4044.124 Mobile/15E148 Safari/604.1"
@@ -46,4 +50,7 @@ requestStream opt = makeAff go
           pure $ Canceler (\_ -> pure unit)
 
 getString :: String -> Aff String
-getString path = requestStream (options path) >>= readToEnd UTF8
+getString path = do
+  stream <- requestStream (options path)
+  str <- readToEnd UTF8 stream
+  pure str

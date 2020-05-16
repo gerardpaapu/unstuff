@@ -2,14 +2,12 @@ module Unstuff.Html where
 
 import Prelude
 
-import Control.Monad.Except (class MonadError, throwError)
-import Data.Either (Either(..), either)
+import Data.Either (Either(..))
 import Data.Foldable (all)
 import Data.List (elem)
 import Data.List as List
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import Effect.Exception (Error, error)
 import LenientHtmlParser as H
 import Text.Parsing.StringParser (ParseError)
 
@@ -45,8 +43,6 @@ match' a b =
     Tuple (Right l) (Right r) -> match l r
     Tuple (Left e) _ -> false
     Tuple _ (Left e) -> false
-
-
 
 getAttr :: String -> H.Tag -> Maybe String
 getAttr name = case _ of
