@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Control.Monad.Except (class MonadError)
+import Control.Monad.Except (class MonadError, throwError)
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Array as Array
@@ -10,7 +10,7 @@ import Data.Either (hush)
 import Data.Filterable (filterMap)
 import Data.Foldable (foldMap)
 import Data.List as List
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Data.String (Pattern(..))
 import Data.String as String
 import Effect (Effect)
@@ -20,7 +20,7 @@ import Effect.Console as Console
 import Effect.Exception (Error)
 import Foreign.Object (Object)
 import LenientHtmlParser as H
-import Simple.JSON (readJSON)
+import Simple.JSON (readJSON, writeJSON)
 import Unstuff.Html as Html
 import Unstuff.Http as Http
 
@@ -33,25 +33,27 @@ handler :: Effect (Promise Payload)
 handler =
   Promise.fromAff
     $ do
-        url <- getFeedUrl
+        body <- getFeedUrl
         pure
           { statusCode: 200.0
-          , body: url
+          , body: writeJSON body 
           }
 
 main :: Effect Unit
 main = do
   launchAff_ do
     url <- getFeedUrl
-    log url
+    log $ show url
 
 log :: String -> Aff Unit
 log = liftEffect <<< Console.log
 
-getFeedUrl :: Aff String
+getFeedUrl :: Aff { url :: String, title :: String }
 getFeedUrl = getFeedUrlAtEndpoint "/national/quizzes"
 
-getFeedUrlAtEndpoint :: String -> Aff String
+
+
+getFeedUrlAtEndpoint :: String -> Aff { url :: String, title :: String }
 getFeedUrlAtEndpoint endpoint = do
   log $ "Fetching the quizzes page from: " <> endpoint
   html <- Http.getString endpoint
@@ -62,13 +64,16 @@ getFeedUrlAtEndpoint endpoint = do
   log $ "Fetching todays quiz page from: " <> quizUrl
   quizPage <- Http.getString quizUrl
 
+  log $ "Looking for the title"
+  title <- findPageTitle' quizPage
+
   log $ "looking for the __INIT_STATE__ blob"
   blob <- findTheScriptTag' quizPage
 
   log $ "looking for the iframe src in the blob"
   url <- urlFromBlob' blob
   
-  pure url
+  pure { url, title }
   
 urlFromBlob' :: forall m. MonadError Error m => StuffBlob -> m String
 urlFromBlob' blob = do
@@ -112,6 +117,22 @@ findLatestQuizUrl html = do
       # List.dropWhile (not <<< Html.match' "<a>")
       # List.head
   Html.getAttr "href" d
+
+findPageTitle' :: String -> Aff String
+findPageTitle' =
+  findPageTitle
+  >>> maybe (throwError (error "No page title")) pure
+
+findPageTitle :: String -> Maybe String
+findPageTitle html = do
+  dom <- H.parseTags html # hush
+  tag <- dom
+         # List.dropWhile (not <<< Html.match' "<title>")
+         # List.drop 1
+         # List.head
+  case tag of
+    (H.TNode text) -> Just text
+    _ -> Nothing
 
 foreign import decodeHTML :: String -> String
 
