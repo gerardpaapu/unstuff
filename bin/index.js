@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-require("../output/Main").main();
+require("../dist/index").main();
