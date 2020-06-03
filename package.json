@@ -1,12 +1,14 @@
 {
   "name": "unstuff",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "",
   "main": "index.js",
   "bin": {
     "unstuff": "bin/index.js"
   },
-  "files": ["dist/index.js"],
+  "files": [
+    "dist/index.js"
+  ],
   "directories": {
     "test": "test"
   },
