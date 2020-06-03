@@ -1,5 +1,6 @@
 import commonjs from "@rollup/plugin-commonjs";
 import resolve from "@rollup/plugin-node-resolve";
+import { terser } from "rollup-plugin-terser";
 
 export default {
   input: "output/Main/index.js",
@@ -10,5 +11,5 @@ export default {
 
   // these are all in the node standard library
   external: ["http", "https", "querystring", "url", "util"],
-  plugins: [commonjs(), resolve()],
+  plugins: [commonjs(), resolve(), terser()],
 };

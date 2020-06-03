@@ -1,8 +1,7 @@
 module Main where
 
 import Prelude
-
-import Control.Monad.Except (class MonadError, throwError)
+import Control.Monad.Except (class MonadError)
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Array as Array
@@ -36,7 +35,7 @@ handler =
         body <- getFeedUrl
         pure
           { statusCode: 200.0
-          , body: writeJSON body 
+          , body: writeJSON body
           }
 
 main :: Effect Unit
@@ -51,62 +50,57 @@ log = liftEffect <<< Console.log
 getFeedUrl :: Aff { url :: String, title :: String }
 getFeedUrl = getFeedUrlAtEndpoint "/national/quizzes"
 
-
-
 getFeedUrlAtEndpoint :: String -> Aff { url :: String, title :: String }
 getFeedUrlAtEndpoint endpoint = do
   log $ "Fetching the quizzes page from: " <> endpoint
   html <- Http.getString endpoint
-
   log $ "Finding the url for the latest quiz"
   quizUrl <- findLatestQuizUrl' html
-
   log $ "Fetching todays quiz page from: " <> quizUrl
   quizPage <- Http.getString quizUrl
-
   log $ "Looking for the title"
   title <- findPageTitle' quizPage
-
   log $ "looking for the __INIT_STATE__ blob"
   blob <- findTheScriptTag' quizPage
-
   log $ "looking for the iframe src in the blob"
   url <- urlFromBlob' blob
-  
   pure { url, title }
-  
+
 urlFromBlob' :: forall m. MonadError Error m => StuffBlob -> m String
 urlFromBlob' blob = do
-  let url = Array.head $ urlFromBlob blob
+  let
+    url = Array.head $ urlFromBlob blob
   case url of
     Just result -> pure result
     _ -> throwError (error "Can't find the url in the __INIT_STATE__ blob")
 
 urlFromBlob :: StuffBlob -> Array String
-urlFromBlob tag =
-  allEmbeds tag # filterMap findTheIframeSrc
+urlFromBlob tag = allEmbeds tag # filterMap findTheIframeSrc
 
 allEmbeds :: forall a. StuffBlob' a -> Array a
-allEmbeds  =
+allEmbeds =
   _.news
-  >>> foldMap (_.news.display_assets)
-  >>> foldMap (_.embedCode >>> t)
+    >>> foldMap (_.news.display_assets)
+    >>> foldMap (_.embedCode >>> getEmbed)
   where
-    t = case _ of
-      Just { embed } -> pure embed
-      _ -> mempty
+  getEmbed = case _ of
+    Just { embed } -> pure embed
+    _ -> mempty
 
 findTheIframeSrc :: String -> Maybe String
 findTheIframeSrc str = do
-  let html = decodeHTML str
+  let
+    html = decodeHTML str
   dom <- hush $ H.parseTags html
   tag <- dom # List.find (Html.match' "<iframe>")
   Html.getAttr "src" tag
 
 findLatestQuizUrl' :: forall m. MonadError Error m => String -> m String
-findLatestQuizUrl' = findLatestQuizUrl >>> case _ of
-  Just s -> pure s
-  Nothing -> throwError (error "Can't find quiz url")
+findLatestQuizUrl' =
+  findLatestQuizUrl
+    >>> case _ of
+        Just s -> pure s
+        Nothing -> throwError (error "Can't find quiz url")
 
 findLatestQuizUrl :: String -> Maybe String
 findLatestQuizUrl html = do
@@ -121,15 +115,16 @@ findLatestQuizUrl html = do
 findPageTitle' :: String -> Aff String
 findPageTitle' =
   findPageTitle
-  >>> maybe (throwError (error "No page title")) pure
+    >>> maybe (throwError (error "No page title")) pure
 
 findPageTitle :: String -> Maybe String
 findPageTitle html = do
   dom <- H.parseTags html # hush
-  tag <- dom
-         # List.dropWhile (not <<< Html.match' "<title>")
-         # List.drop 1
-         # List.head
+  tag <-
+    dom
+      # List.dropWhile (not <<< Html.match' "<title>")
+      # List.drop 1
+      # List.head
   case tag of
     (H.TNode text) -> Just text
     _ -> Nothing
@@ -159,7 +154,7 @@ type StuffBlob' a
   = { news :: Object (StuffItem a) }
 
 type StuffItem a
-  = { news :: { display_assets :: Array { embedCode :: Maybe { embed :: a} } } }
+  = { news :: { display_assets :: Array { embedCode :: Maybe { embed :: a } } } }
 
 type StuffBlob
   = StuffBlob' String
