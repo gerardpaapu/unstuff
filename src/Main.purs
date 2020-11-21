@@ -1,23 +1,33 @@
 module Main where
 
 import Prelude
+
 import Control.Monad.Except (class MonadError)
 import Control.Promise (Promise)
 import Control.Promise as Promise
 import Data.Array as Array
+import Data.Date as D
 import Data.Either (hush)
+import Data.Enum (fromEnum)
 import Data.Filterable (filterMap)
 import Data.Foldable (foldMap)
+import Data.List (List)
 import Data.List as List
 import Data.Maybe (Maybe(..), maybe)
 import Data.String (Pattern(..))
 import Data.String as String
+import Data.Traversable (for, for_)
+import Data.Tuple (Tuple)
+import Data.Tuple.Nested ((/\))
+import Data.Unfoldable (class Unfoldable, unfoldr)
 import Effect (Effect)
 import Effect.Aff (Aff, error, launchAff_, throwError)
 import Effect.Class (liftEffect)
 import Effect.Console as Console
 import Effect.Exception (Error)
+import Effect.Now (nowDate)
 import Foreign.Object (Object)
+import LenientHtmlParser (Tag)
 import LenientHtmlParser as H
 import Simple.JSON (readJSON, writeJSON)
 import Unstuff.Html as Html
@@ -41,30 +51,54 @@ handler =
 main :: Effect Unit
 main = do
   launchAff_ do
-    url <- getFeedUrl
-    log $ show url
+    urls <- getFeedUrl
+    log "---------------"
+    for_ urls $ \url ->
+      log $ show url
 
 log :: String -> Aff Unit
 log = liftEffect <<< Console.log
 
-getFeedUrl :: Aff { url :: String, title :: String }
+getFeedUrl :: Aff (Array { title :: String , url :: String })
 getFeedUrl = getFeedUrlAtEndpoint "/national/quizzes"
 
-getFeedUrlAtEndpoint :: String -> Aff { url :: String, title :: String }
+getFeedUrlAtEndpoint :: String -> Aff (Array { url :: String, title :: String })
 getFeedUrlAtEndpoint endpoint = do
   log $ "Fetching the quizzes page from: " <> endpoint
   html <- Http.getString endpoint
   log $ "Finding the url for the latest quiz"
-  quizUrl <- findLatestQuizUrl' html
-  log $ "Fetching todays quiz page from: " <> quizUrl
-  quizPage <- Http.getString quizUrl
-  log $ "Looking for the title"
-  title <- findPageTitle' quizPage
-  log $ "looking for the __INIT_STATE__ blob"
-  blob <- findTheScriptTag' quizPage
-  log $ "looking for the iframe src in the blob"
-  url <- urlFromBlob' blob
-  pure { url, title }
+
+  urls <- allQuizUrls html
+  timestamp <- todayTimestamp
+  log $ "timestamp " <> timestamp
+  
+  let urls' = urls # Array.filter (_.text >>> isMatchingTitle timestamp)
+  for urls' $ \({ href, text }) -> do
+    log $ "Fetching the quiz page for:  " <> text
+    log $ "Fetching the quiz page from: " <> href
+    quizPage <- Http.getString href
+    log $ "Looking for the title"
+    title <- findPageTitle' quizPage
+    log $ "looking for the __INIT_STATE__ blob"
+    blob <- findTheScriptTag' quizPage
+    log $ "looking for the iframe src in the blob"
+    url <- urlFromBlob' blob
+    log $ "found!"
+    pure { url, title }
+
+
+isMatchingTitle :: String -> String -> Boolean
+isMatchingTitle timestamp title = do
+  let notSports = not $ String.contains (Pattern "Sport") title
+  let isToday = String.contains (Pattern timestamp) title
+  isToday && notSports
+
+todayTimestamp :: Aff String
+todayTimestamp = liftEffect $ do
+  today <- nowDate
+  let dayN = D.day today # fromEnum # show
+  pure $ show (D.month today) <> " " <>  dayN
+
 
 urlFromBlob' :: forall m. MonadError Error m => StuffBlob -> m String
 urlFromBlob' blob = do
@@ -111,6 +145,33 @@ findLatestQuizUrl html = do
       # List.dropWhile (not <<< Html.match' "<a>")
       # List.head
   Html.getAttr "href" d
+
+allQuizzes' :: (List Tag) -> Maybe (Tuple { href :: String , text :: String} (List Tag))                  
+allQuizzes' dom =
+    dom
+    # List.dropWhile (not <<< Html.match' "<li class=\"story-list__item js-adfliction__target--all\">")
+    # List.dropWhile (not <<< Html.match' "<a>")
+    # case _ of
+      List.Nil -> Nothing
+      List.Cons x xs -> do
+        href <- Html.getAttr "href" x
+        text <- getTitle xs
+        pure ({ href, text } /\ xs)
+    where
+      getTitle = 
+        List.dropWhile (not <<< Html.match' "<h3>")
+        >>> List.drop 1
+        >>> case _ of
+          List.Cons (H.TNode txt) _ -> pure (String.trim txt)
+          _ -> Nothing
+        
+
+allQuizUrls :: forall m u. MonadError Error m =>  Unfoldable u => String -> m (u _)
+allQuizUrls html = do
+  case H.parseTags html # hush of
+    Nothing -> throwError (error "can't parse html")
+    Just dom -> pure $ unfoldr allQuizzes' dom
+      
 
 findPageTitle' :: String -> Aff String
 findPageTitle' =
