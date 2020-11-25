@@ -8,12 +8,12 @@ import Control.Promise as Promise
 import Data.Array as Array
 import Data.Date as D
 import Data.Either (hush)
-import Data.Enum (fromEnum)
+import Data.Enum (toEnum)                                                  
 import Data.Filterable (filterMap)
 import Data.Foldable (foldMap)
 import Data.List (List)
 import Data.List as List
-import Data.Maybe (Maybe(..), maybe)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
 import Data.String (Pattern(..))
 import Data.String as String
 import Data.Traversable (for, for_)
@@ -25,7 +25,6 @@ import Effect.Aff (Aff, error, launchAff_, throwError)
 import Effect.Class (liftEffect)
 import Effect.Console as Console
 import Effect.Exception (Error)
-import Effect.Now (nowDate)
 import Foreign.Object (Object)
 import LenientHtmlParser (Tag)
 import LenientHtmlParser as H
@@ -95,9 +94,9 @@ isMatchingTitle timestamp title = do
 
 todayTimestamp :: Aff String
 todayTimestamp = liftEffect $ do
-  today <- nowDate
-  let dayN = D.day today # fromEnum # show
-  pure $ show (D.month today) <> " " <>  dayN
+  {year, month, date} <- localDateNow                                      
+  let month' = fromMaybe D.January $ toEnum month                           
+  pure $ show month' <> " " <>  show date                                        
 
 
 urlFromBlob' :: forall m. MonadError Error m => StuffBlob -> m String
@@ -166,7 +165,7 @@ allQuizzes' dom =
           _ -> Nothing
         
 
-allQuizUrls :: forall m u. MonadError Error m =>  Unfoldable u => String -> m (u _)
+allQuizUrls :: forall m u. MonadError Error m =>  Unfoldable u => String -> m (u { href :: String , text :: String})                                                                          
 allQuizUrls html = do
   case H.parseTags html # hush of
     Nothing -> throwError (error "can't parse html")
@@ -191,6 +190,8 @@ findPageTitle html = do
     _ -> Nothing
 
 foreign import decodeHTML :: String -> String
+
+foreign import localDateNow :: Effect ({ year :: Int, month :: Int, date :: Int })
 
 findTheScriptTag' :: forall m. MonadError Error m => String -> m StuffBlob
 findTheScriptTag' s = case (findTheScript s) of
